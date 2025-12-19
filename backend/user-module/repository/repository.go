@@ -1,47 +1,42 @@
 package repository
 
 import (
-	"context"
-	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/user-module/model"
+	"fmt"
 
+	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/providers"
+
+	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/user-module/model"
 	"gorm.io/gorm"
 )
 
 // IUserRepository defines the interface for user repository
-type IUserRepository interface {
-	Create(ctx context.Context, tx *gorm.DB, user *model.User) error
-	GetByID(ctx context.Context, tx *gorm.DB, id int) (*model.User, error)
-	Update(ctx context.Context, tx *gorm.DB, user *model.User) error
-	Delete(ctx context.Context, tx *gorm.DB, id int) error
-}
+type IUserRepository interface{}
 
 // Repository implements IUserRepository
 type Repository struct {
 	DB     *gorm.DB
-	Logger LoggerInterface
+	Logger *providers.LoggerInterface
 }
 
-func (r Repository) Create(ctx context.Context, tx *gorm.DB, user *model.User) error {
-	//TODO implement me
-	panic("implement me")
-}
+// NewRepository creates a new instance of the user repository
+func NewRepository(db *gorm.DB, logger providers.LoggerInterface) IUserRepository {
+	if db == nil {
+		panic("database connection cannot be nil")
+	}
 
-func (r Repository) GetByID(ctx context.Context, tx *gorm.DB, id int) (*model.User, error) {
-	//TODO implement me
-	panic("implement me")
-}
+	if logger == nil {
+		panic("logger cannot be nil")
+	}
 
-func (r Repository) Update(ctx context.Context, tx *gorm.DB, user *model.User) error {
-	//TODO implement me
-	panic("implement me")
-}
+	// Auto-migrate the User model
+	err := db.AutoMigrate(&model.User{})
+	if err != nil {
+		logger.Error(fmt.Sprintf("Failed to auto-migrate User model: %v", err))
+		panic(fmt.Sprintf("failed to auto-migrate User model: %v", err))
+	}
 
-func (r Repository) Delete(ctx context.Context, tx *gorm.DB, id int) error {
-	//TODO implement me
-	panic("implement me")
-}
-
-type LoggerInterface interface {
-	Info(args ...interface{})
-	Error(args ...interface{})
+	return &Repository{
+		DB:     db,
+		Logger: &logger,
+	}
 }
