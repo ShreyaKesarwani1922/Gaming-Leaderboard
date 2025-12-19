@@ -1,10 +1,9 @@
 package http
 
 import (
-	"encoding/json"
-	core "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/user-module/core"
 	"net/http"
 
+	core "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/user-module/core"
 	"github.com/gorilla/mux"
 )
 
@@ -16,42 +15,22 @@ type UserHttpExtension struct {
 	Core    core.Core   // replace with your core service interface
 }
 
-// Init initializes the handler (to be called from main.go)
-func (he *UserHttpExtension) Init() {
-	he := &UserHttpExtension{
-		Router:  router,
-		Metrics: metrics,
-		Core:    core,
+// NewUserHttpExtension creates a new UserHttpExtension instance
+func NewUserHttpExtension(router *mux.Router, core *core.Core) *UserHttpExtension {
+	return &UserHttpExtension{
+		Router: router,
+		Core:   *core,
 	}
-	RegisterRoutes(he)
-	return he
 }
 
-// Example handler function
-func (he *UserHttpExtension) CreateUserHandler() func(http.ResponseWriter, *http.Request) {
-	return func(rw http.ResponseWriter, rq *http.Request) {
-		defer func() {
-			if rec := recover(); rec != nil {
-				http.Error(rw, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
-			}
-		}()
+// Init initializes the handler (to be called from main.go)
+func (he *UserHttpExtension) Init() {
+	he.Router.HandleFunc("/ping", he.Ping).Methods("GET")
+}
 
-		switch rq.Method {
-		case http.MethodPost:
-			var req CreateUserRequest
-			if err := json.NewDecoder(rq.Body).Decode(&req); err != nil {
-				http.Error(rw, err.Error(), http.StatusBadRequest)
-				return
-			}
-
-			// call core logic (placeholder)
-			res, err := he.Core.(UserCore).CreateUser(req)
-			if err != nil {
-				http.Error(rw, err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			json.NewEncoder(rw).Encode(res)
-		}
-	}
+// Ping handles the ping endpoint
+func (he *UserHttpExtension) Ping(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "ok", "message": "pong"}`))
 }
