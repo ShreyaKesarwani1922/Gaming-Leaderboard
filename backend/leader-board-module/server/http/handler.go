@@ -1,9 +1,12 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 	"github.com/newrelic/go-agent/v3/newrelic"
@@ -184,4 +187,80 @@ func (h *LeaderboardHandler) GetPlayerRank(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.respondWithJSON(w, http.StatusOK, resp)
+}
+
+func (h *LeaderboardHandler) StreamLeaderboard(w http.ResponseWriter, r *http.Request) {
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*") // For development only
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	// Handle CORS preflight
+	if r.Method == "OPTIONS" {
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	// Get the flusher
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "Streaming not supported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+
+	// Initial data send
+	if err := sendLeaderboardUpdate(ctx, w, *h.core); err != nil {
+		h.logger.Error("Failed to send initial leaderboard data", zap.Error(err))
+		return
+	}
+	flusher.Flush()
+
+	// Periodic updates
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			if err := sendLeaderboardUpdate(ctx, w, *h.core); err != nil {
+				h.logger.Error("Failed to send leaderboard update", zap.Error(err))
+				return
+			}
+			flusher.Flush()
+		}
+	}
+}
+
+// Helper function to send leaderboard updates
+func sendLeaderboardUpdate(ctx context.Context, w http.ResponseWriter, core core.LeaderboardCore) error {
+	// Get top players
+	players, err := core.GetTopPlayers(ctx, 10)
+	if err != nil {
+		return fmt.Errorf("failed to get top players: %w", err)
+	}
+
+	// Create response with players array
+	response := map[string]interface{}{
+		"players":   players,
+		"updatedAt": time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Convert to JSON
+	data, err := json.Marshal(response)
+	if err != nil {
+		return fmt.Errorf("failed to marshal leaderboard data: %w", err)
+	}
+
+	// Write SSE format
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return fmt.Errorf("failed to write SSE data: %w", err)
+	}
+
+	return nil
 }
