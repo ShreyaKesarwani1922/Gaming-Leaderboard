@@ -2,8 +2,10 @@ package http
 
 import (
 	"encoding/json"
-	"github.com/newrelic/go-agent/v3/newrelic"
 	"net/http"
+	"strconv"
+
+	"github.com/newrelic/go-agent/v3/newrelic"
 
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/constants"
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/core"
@@ -106,4 +108,34 @@ func (h *LeaderboardHandler) respondWithError(
 		"error":   message,
 		"code":    code,
 	})
+}
+
+func (h *LeaderboardHandler) GetTopPlayers(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Default to top 10 players if limit is not specified or invalid
+	limit := 10
+	if limitParam := r.URL.Query().Get("limit"); limitParam != "" {
+		if l, err := strconv.Atoi(limitParam); err == nil && l > 0 {
+			limit = l
+		}
+	}
+
+	resp, err := h.core.GetTopPlayers(ctx, limit)
+	if err != nil {
+		h.logger.Error(
+			"GetTopPlayers failed",
+			zap.Error(err),
+		)
+
+		h.respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"Failed to fetch leaderboard",
+			constants.ErrInternalServer,
+		)
+		return
+	}
+
+	h.respondWithJSON(w, http.StatusOK, resp)
 }

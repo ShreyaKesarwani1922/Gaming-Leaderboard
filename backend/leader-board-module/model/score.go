@@ -21,3 +21,15 @@ type ScoreData struct {
 	Score     int64     `json:"score"`
 	Timestamp time.Time `json:"timestamp"`
 }
+
+type PlayerScore struct {
+	UserID int64 `json:"user_id"`
+	Score  int64 `json:"score"`
+}
+
+type GetTopPlayersResponse struct {
+	Success bool          `json:"success"`
+	Players []PlayerScore `json:"players"`
+	Error   string        `json:"error,omitempty"`
+	Code    string        `json:"code,omitempty"`
+}
