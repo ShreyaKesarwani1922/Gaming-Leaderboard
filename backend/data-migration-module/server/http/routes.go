@@ -8,5 +8,5 @@ import (
 
 func (h *MigrationHandler) RegisterRoutes(router *mux.Router) {
 	_, handler := newrelic.WrapHandle(h.newRelic, "/api/migrate/populate", http.HandlerFunc(h.PopulateData))
-	router.Handle("/api/migrate/populate", handler).Methods("POST")
+	router.Handle("/api/migrate/populate", handler).Methods(http.MethodPost)
 }
