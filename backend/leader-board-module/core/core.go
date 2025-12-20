@@ -17,6 +17,7 @@ type LeaderboardCore struct {
 
 type ILeaderboardCore interface {
 	SubmitScore(ctx context.Context, req *model.SubmitScoreRequest) (*model.SubmitScoreResponse, error)
+	GetTopPlayers(ctx context.Context, limit int) (*model.GetTopPlayersResponse, error)
 }
 
 func NewLeaderboardCore(repo *repository.LeaderboardRepository, logger *providers.ConsoleLogger) *LeaderboardCore {
@@ -53,5 +54,29 @@ func (c *LeaderboardCore) SubmitScore(ctx context.Context, req *model.SubmitScor
 			Score:     req.Score,
 			Timestamp: timestamp,
 		},
+	}, nil
+}
+
+func (c *LeaderboardCore) GetTopPlayers(ctx context.Context, limit int) (*model.GetTopPlayersResponse, error) {
+	if limit <= 0 {
+		limit = 10 // Default to 10 if invalid limit provided
+	}
+
+	entries, err := c.repo.GetTopPlayers(ctx, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	players := make([]model.PlayerScore, 0, len(entries))
+	for _, entry := range entries {
+		players = append(players, model.PlayerScore{
+			UserID: entry.UserID,
+			Score:  entry.TotalScore,
+		})
+	}
+
+	return &model.GetTopPlayersResponse{
+		Success: true,
+		Players: players,
 	}, nil
 }

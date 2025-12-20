@@ -4,14 +4,21 @@ package repository
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/constants"
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/providers"
 	"gorm.io/gorm"
-	"time"
 )
+
+type LeaderboardEntry struct {
+	UserID     int64 `gorm:"column:user_id"`
+	TotalScore int64 `gorm:"column:total_score"`
+}
 
 type ILeaderboardRepository interface {
 	SubmitScore(ctx context.Context, userID, score int64, gameMode string) (time.Time, error)
+	GetTopPlayers(ctx context.Context, limit int) ([]LeaderboardEntry, error)
 }
 
 type LeaderboardRepository struct {
@@ -89,4 +96,21 @@ func (r *LeaderboardRepository) SubmitScore(ctx context.Context, userID int64, s
 	}
 
 	return now, tx.Commit().Error
+}
+
+func (r *LeaderboardRepository) GetTopPlayers(ctx context.Context, limit int) ([]LeaderboardEntry, error) {
+	var entries []LeaderboardEntry
+
+	err := r.db.Debug().WithContext(ctx).
+		Table("gaming.leaderboard").
+		Select("user_id, total_score").
+		Order("total_score DESC").
+		Limit(limit).
+		Find(&entries).Error
+
+	if err != nil {
+		return nil, err
+	}
+
+	return entries, nil
 }
