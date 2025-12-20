@@ -15,4 +15,8 @@ func (h *LeaderboardHandler) RegisterRoutes(router *mux.Router) {
 	// Get top players endpoint
 	_, topPlayersHandler := newrelic.WrapHandle(h.newrelic, "api/leaderboard/top", http.HandlerFunc(h.GetTopPlayers))
 	router.Handle("/api/leaderboard/top", topPlayersHandler).Methods(http.MethodGet)
+
+	// Get player rank endpoint
+	_, playerRankHandler := newrelic.WrapHandle(h.newrelic, "api/leaderboard/rank/{user_id}", http.HandlerFunc(h.GetPlayerRank))
+	router.Handle("/api/leaderboard/rank/{user_id}", playerRankHandler).Methods(http.MethodGet)
 }

@@ -16,9 +16,16 @@ type LeaderboardEntry struct {
 	TotalScore int64 `gorm:"column:total_score"`
 }
 
+type PlayerRank struct {
+	UserID int64 `gorm:"column:user_id"`
+	Rank   int   `gorm:"column:rank"`
+	Score  int64 `gorm:"column:total_score"`
+}
+
 type ILeaderboardRepository interface {
 	SubmitScore(ctx context.Context, userID, score int64, gameMode string) (time.Time, error)
 	GetTopPlayers(ctx context.Context, limit int) ([]LeaderboardEntry, error)
+	GetPlayerRank(ctx context.Context, userID int64) (*PlayerRank, error)
 }
 
 type LeaderboardRepository struct {
@@ -113,4 +120,32 @@ func (r *LeaderboardRepository) GetTopPlayers(ctx context.Context, limit int) ([
 	}
 
 	return entries, nil
+}
+
+func (r *LeaderboardRepository) GetPlayerRank(ctx context.Context, userID int64) (*PlayerRank, error) {
+	var rank PlayerRank
+
+	err := r.db.WithContext(ctx).
+		Raw(`
+			WITH ranked_players AS (
+				SELECT 
+					user_id, 
+					total_score,
+					RANK() OVER (ORDER BY total_score DESC) as rank
+				FROM gaming.leaderboard
+			)
+			SELECT user_id, rank, total_score
+			FROM ranked_players
+			WHERE user_id = ?
+		`, userID).
+		Scan(&rank).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, errors.New(constants.ErrUserNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &rank, nil
 }

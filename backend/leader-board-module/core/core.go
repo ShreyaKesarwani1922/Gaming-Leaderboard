@@ -3,6 +3,7 @@ package core
 
 import (
 	"context"
+	"errors"
 
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/constants"
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/model"
@@ -18,6 +19,7 @@ type LeaderboardCore struct {
 type ILeaderboardCore interface {
 	SubmitScore(ctx context.Context, req *model.SubmitScoreRequest) (*model.SubmitScoreResponse, error)
 	GetTopPlayers(ctx context.Context, limit int) (*model.GetTopPlayersResponse, error)
+	GetPlayerRank(ctx context.Context, userID int64) (*model.PlayerRankResponse, error)
 }
 
 func NewLeaderboardCore(repo *repository.LeaderboardRepository, logger *providers.ConsoleLogger) *LeaderboardCore {
@@ -78,5 +80,32 @@ func (c *LeaderboardCore) GetTopPlayers(ctx context.Context, limit int) (*model.
 	return &model.GetTopPlayersResponse{
 		Success: true,
 		Players: players,
+	}, nil
+}
+
+func (c *LeaderboardCore) GetPlayerRank(ctx context.Context, userID int64) (*model.PlayerRankResponse, error) {
+	if userID <= 0 {
+		return nil, errors.New("invalid user ID")
+	}
+
+	rank, err := c.repo.GetPlayerRank(ctx, userID)
+	if err != nil {
+		if err.Error() == constants.ErrUserNotFound {
+			return &model.PlayerRankResponse{
+				Success: false,
+				Error:   "User not found",
+				Code:    constants.ErrUserNotFound,
+			}, nil
+		}
+		return nil, err
+	}
+
+	return &model.PlayerRankResponse{
+		Success: true,
+		Data: &model.PlayerRankData{
+			UserID: rank.UserID,
+			Rank:   rank.Rank,
+			Score:  rank.Score,
+		},
 	}, nil
 }

@@ -33,3 +33,16 @@ type GetTopPlayersResponse struct {
 	Error   string        `json:"error,omitempty"`
 	Code    string        `json:"code,omitempty"`
 }
+
+type PlayerRankData struct {
+	UserID int64 `json:"user_id"`
+	Rank   int   `json:"rank"`
+	Score  int64 `json:"score"`
+}
+
+type PlayerRankResponse struct {
+	Success bool            `json:"success"`
+	Data    *PlayerRankData `json:"data,omitempty"`
+	Error   string          `json:"error,omitempty"`
+	Code    string          `json:"code,omitempty"`
+}
