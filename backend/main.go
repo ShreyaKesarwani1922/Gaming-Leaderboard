@@ -9,6 +9,9 @@ import (
 	dataMigrationCore "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/data-migration-module/core"
 	dataMigrationRepo "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/data-migration-module/repository"
 	dataMigrationHttpModule "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/data-migration-module/server/http"
+	leaderBoardCore "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/core"
+	leaderBoardRepo "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/repository"
+	leaderBoardHttp "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/server/http"
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/user-module/core"
 	httpModule "github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/user-module/server/http"
 	"github.com/gorilla/mux"
@@ -18,72 +21,141 @@ import (
 )
 
 func main() {
-	// Create a new router
+	// ------------------------------------------------------------------
+	// Logger
+	// ------------------------------------------------------------------
+	logger := providers.NewConsoleLogger()
+	logger.Info("Starting Gaming-Leaderboard Backend Service")
+
+	// ------------------------------------------------------------------
+	// Router
+	// ------------------------------------------------------------------
 	router := mux.NewRouter()
+
+	// Panic recovery middleware
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if txn := newrelic.FromContext(r.Context()); txn != nil {
-				txn.SetName(r.Method + " " + r.URL.Path)
-			}
+			defer func() {
+				if rec := recover(); rec != nil {
+					logger.Errorf("Panic recovered | path=%s error=%v", r.URL.Path, rec)
+					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+				}
+			}()
 			next.ServeHTTP(w, r)
 		})
 	})
 
-	// Initialize logger first
-	logger := providers.NewConsoleLogger()
+	// Request logging + New Relic transaction naming
+	router.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
 
-	// Initialize PostgreSQL database connection
+			if txn := newrelic.FromContext(r.Context()); txn != nil {
+				txn.SetName(r.Method + " " + r.URL.Path)
+			}
+
+			logger.Infof(
+				"Incoming request | method=%s path=%s remote=%s",
+				r.Method,
+				r.URL.Path,
+				r.RemoteAddr,
+			)
+
+			next.ServeHTTP(w, r)
+
+			logger.Infof(
+				"Request completed | method=%s path=%s duration=%s",
+				r.Method,
+				r.URL.Path,
+				time.Since(start),
+			)
+		})
+	})
+
+	// ------------------------------------------------------------------
+	// Database
+	// ------------------------------------------------------------------
+	logger.Info("Connecting to PostgreSQL database")
+
 	dsn := "host=localhost user=postgres password=password dbname=gaming_dashboard port=5432 sslmode=disable TimeZone=UTC"
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
 	if err != nil {
-		logger.Fatalf("Failed to connect to database: %v", err)
+		logger.Fatalf("Database connection failed: %v", err)
 	}
 
-	// Test the database connection
 	sqlDB, err := db.DB()
 	if err != nil {
-		logger.Fatalf("Failed to get database instance: %v", err)
+		logger.Fatalf("Failed to get sql.DB instance: %v", err)
 	}
 
-	// Set connection pool settings
 	sqlDB.SetMaxIdleConns(10)
 	sqlDB.SetMaxOpenConns(100)
 	sqlDB.SetConnMaxLifetime(time.Hour)
 
-	logger.Info("Successfully connected to PostgreSQL database")
+	logger.Info("PostgreSQL connected and pool configured")
 
-	// Adding New Relic
+	// ------------------------------------------------------------------
+	// New Relic
+	// ------------------------------------------------------------------
+	logger.Info("Initializing New Relic")
+
 	nrApp, err := newrelic.NewApplication(
 		newrelic.ConfigAppName("Gaming-Leaderboard-Backend"),
 		newrelic.ConfigLicense("6366ed4fc1a70027f322f15ec705de53FFFFNRAL"),
 		newrelic.ConfigAppLogForwardingEnabled(true),
 	)
 	if err != nil {
-		logger.Fatalf("Failed to initialize New Relic: %v", err)
+		logger.Fatalf("New Relic initialization failed: %v", err)
 	}
 
-	// Initialize userCore etc
+	logger.Info("New Relic initialized successfully")
+
+	// ------------------------------------------------------------------
+	// User Module
+	// ------------------------------------------------------------------
+	logger.Info("Initializing User module")
+
 	userCore, err := core.NewCore(db, logger)
 	if err != nil {
-		logger.Fatalf("Failed to initialize core: %v", err)
+		logger.Fatalf("User core initialization failed: %v", err)
 	}
-	httpExt := httpModule.NewUserHttpExtension(router, userCore)
-	httpModule.RegisterRoutes(httpExt)
 
-	// Initialize data migration
+	userHttpExt := httpModule.NewUserHttpExtension(router, userCore)
+	httpModule.RegisterRoutes(userHttpExt)
+
+	logger.Info("User routes registered")
+
+	// ------------------------------------------------------------------
+	// Data Migration Module
+	// ------------------------------------------------------------------
+	logger.Info("Initializing Data Migration module")
+
 	dmRepo := dataMigrationRepo.NewMigrationRepository(db)
 	dmCore := dataMigrationCore.NewMigrationCore(dmRepo, db)
-	dmHandler := dataMigrationHttpModule.NewMigrationHandler(dmCore, nrApp)
-	dmHandler.RegisterRoutes(router) // Call the method on the handler instance
+	dmHandler := dataMigrationHttpModule.NewMigrationHandler(dmCore, nrApp, logger)
+	dmHandler.RegisterRoutes(router)
 
-	// Create a new router that will be wrapped by New Relic
-	nrRouter := http.NewServeMux()
-	nrRouter.HandleFunc(newrelic.WrapHandleFunc(nrApp, "/", func(w http.ResponseWriter, r *http.Request) {
-		router.ServeHTTP(w, r)
-	}))
+	logger.Info("Data Migration routes registered")
 
-	logger.Info("Server starting on :3000...")
-	if err := http.ListenAndServe(":3000", router); err != nil {
-		logger.Fatalf("Failed to start server: %v", err)
+	// ------------------------------------------------------------------
+	// Leader Board Module
+	// ------------------------------------------------------------------
+	logger.Info("Initializing Leader Board module")
+
+	leaderboardRepo := leaderBoardRepo.NewLeaderBoardRepository(db, logger)
+	leaderboardCore := leaderBoardCore.NewLeaderboardCore(leaderboardRepo, logger)
+	leaderboardHandler := leaderBoardHttp.NewLeaderboardHandler(leaderboardCore, logger, nrApp)
+	leaderboardHandler.RegisterRoutes(router)
+
+	logger.Info("Leaderboard routes registered")
+
+	// ------------------------------------------------------------------
+	// Start Server
+	// ------------------------------------------------------------------
+	port := ":3000"
+	logger.Infof("Server listening on %s", port)
+
+	if err := http.ListenAndServe(port, router); err != nil {
+		logger.Fatalf("Server startup failed: %v", err)
 	}
 }
