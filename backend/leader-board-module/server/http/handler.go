@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/gorilla/mux"
 	"github.com/newrelic/go-agent/v3/newrelic"
 
 	"github.com/ShreyaKesarwani1922/Gaming-Leaderboard/backend/leader-board-module/constants"
@@ -134,6 +135,51 @@ func (h *LeaderboardHandler) GetTopPlayers(w http.ResponseWriter, r *http.Reques
 			"Failed to fetch leaderboard",
 			constants.ErrInternalServer,
 		)
+		return
+	}
+
+	h.respondWithJSON(w, http.StatusOK, resp)
+}
+
+func (h *LeaderboardHandler) GetPlayerRank(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	vars := mux.Vars(r)
+
+	userID, err := strconv.ParseInt(vars["user_id"], 10, 64)
+	if err != nil || userID <= 0 {
+		h.respondWithError(
+			w,
+			http.StatusBadRequest,
+			"Invalid user ID",
+			constants.ErrInvalidRequest,
+		)
+		return
+	}
+
+	resp, err := h.core.GetPlayerRank(ctx, userID)
+	if err != nil {
+		h.logger.Error(
+			"GetPlayerRank failed",
+			zap.Int64("user_id", userID),
+			zap.Error(err),
+		)
+
+		h.respondWithError(
+			w,
+			http.StatusInternalServerError,
+			"Failed to fetch player rank",
+			constants.ErrInternalServer,
+		)
+		return
+	}
+
+	if !resp.Success {
+		status := http.StatusNotFound
+		if resp.Code == constants.ErrUserNotFound {
+			status = http.StatusNotFound
+		}
+
+		h.respondWithJSON(w, status, resp)
 		return
 	}
 
